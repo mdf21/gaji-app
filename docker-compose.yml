@@ -1,0 +1,29 @@
+version: '3.8'
+
+services:
+  backend:
+    build: ./backend
+    container_name: app_gaji_backend
+    volumes:
+      - gaji_data:/app/data
+    networks:
+      - gaji_network
+    restart: always
+
+  frontend:
+    build: ./frontend
+    container_name: app_gaji_frontend
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+    networks:
+      - gaji_network
+    restart: always
+
+volumes:
+  gaji_data:
+
+networks:
+  gaji_network:
+    driver: bridge
