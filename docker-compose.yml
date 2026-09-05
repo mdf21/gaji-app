@@ -14,7 +14,7 @@ services:
     build: ./frontend
     container_name: app_gaji_frontend
     ports:
-      - "80:80"
+      - "7001:80"
     depends_on:
       - backend
     networks:
