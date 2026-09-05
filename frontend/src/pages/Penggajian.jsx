@@ -16,6 +16,7 @@ export default function Penggajian({ token }) {
   const [formData, setFormData] = useState(initialState);
   const [isEditing, setIsEditing] = useState(false);
   const [editId, setEditId] = useState(null);
+  const [error, setError] = useState('');
   const [showDetail, setShowDetail] = useState(false);
   const [selectedGaji, setSelectedGaji] = useState(null);
 
@@ -29,24 +30,45 @@ export default function Penggajian({ token }) {
   }, [filterPeriodeId, token]);
 
   const fetchPeriode = async () => {
-    const res = await fetch('/api/periode', { headers: { 'Authorization': `Bearer ${token}` } });
-    const data = await res.json();
-    setPeriode(data);
-    if(data.length > 0 && !filterPeriodeId) setFilterPeriodeId(data[0].id);
+    try {
+      setError('');
+      const res = await fetch('/api/periode', { headers: { 'Authorization': `Bearer ${token}` } });
+      if (!res.ok) throw new Error('Gagal memuat data periode');
+      const data = await res.json();
+      setPeriode(data);
+      if(data.length > 0 && !filterPeriodeId) setFilterPeriodeId(String(data[0].id));
+    } catch (err) {
+      console.error(err);
+      setError(err.message);
+    }
   };
 
   const fetchGuru = async () => {
-    const res = await fetch('/api/guru', { headers: { 'Authorization': `Bearer ${token}` } });
-    setGuru(await res.json());
+    try {
+      setError('');
+      const res = await fetch('/api/guru', { headers: { 'Authorization': `Bearer ${token}` } });
+      if (!res.ok) throw new Error('Gagal memuat data guru');
+      setGuru(await res.json());
+    } catch (err) {
+      console.error(err);
+      setError(err.message);
+    }
   };
 
   const fetchData = async () => {
     if (!token) return;
-    let url = '/api/gaji';
-    if (filterPeriodeId) url += `?periode_id=${filterPeriodeId}`;
-    
-    const res = await fetch(url, { headers: { 'Authorization': `Bearer ${token}` } });
-    setDataGaji(await res.json());
+    try {
+      setError('');
+      let url = '/api/gaji';
+      if (filterPeriodeId) url += `?periode_id=${filterPeriodeId}`;
+      
+      const res = await fetch(url, { headers: { 'Authorization': `Bearer ${token}` } });
+      if (!res.ok) throw new Error('Gagal memuat data gaji');
+      setDataGaji(await res.json());
+    } catch (err) {
+      console.error(err);
+      setError(err.message);
+    }
   };
 
   const formatRupiah = (angka) => new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(angka || 0);
@@ -60,7 +82,7 @@ export default function Penggajian({ token }) {
     if(selectedGuru) {
         setFormData({
             ...formData, 
-            guru_id: selectedGuru.id, 
+            guru_id: String(selectedGuru.id), 
             nama: selectedGuru.nama,
             honor_per_jam: selectedGuru.tarif_honor
         });
@@ -69,36 +91,58 @@ export default function Penggajian({ token }) {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    const selectedPeriode = periode.find(p => p.id === parseInt(formData.periode_id));
-    const finalData = {
-        ...formData,
-        bulan: selectedPeriode?.bulan || ''
-    };
-    
-    const url = isEditing ? `/api/gaji/${editId}` : '/api/gaji';
-    const method = isEditing ? 'PUT' : 'POST';
+    try {
+      setError('');
+      const selectedPeriode = periode.find(p => p.id === parseInt(formData.periode_id));
+      const finalData = {
+          ...formData,
+          bulan: selectedPeriode?.bulan || ''
+      };
+      
+      const url = isEditing ? `/api/gaji/${editId}` : '/api/gaji';
+      const method = isEditing ? 'PUT' : 'POST';
 
-    await fetch(url, {
-      method,
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-      body: JSON.stringify(finalData)
-    });
-    setFormData({ ...initialState, periode_id: formData.periode_id });
-    setIsEditing(false);
-    setEditId(null);
-    fetchData();
+      const res = await fetch(url, {
+        method,
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify(finalData)
+      });
+      if (!res.ok) {
+        const errData = await res.json();
+        throw new Error(errData.message || 'Gagal menyimpan data gaji');
+      }
+      
+      setFormData({ ...initialState, periode_id: formData.periode_id });
+      setIsEditing(false);
+      setEditId(null);
+      fetchData();
+    } catch (err) {
+      console.error(err);
+      setError(err.message);
+    }
   };
 
   const handleEdit = (gaji) => {
-    setFormData(gaji);
+    setFormData({
+      ...gaji,
+      guru_id: String(gaji.guru_id),
+      periode_id: String(gaji.periode_id)
+    });
     setIsEditing(true);
     setEditId(gaji.id);
   };
 
   const handleDelete = async (id) => {
     if(confirm('Yakin ingin menghapus data ini?')) {
-      await fetch(`/api/gaji/${id}`, { method: 'DELETE', headers: { 'Authorization': `Bearer ${token}` } });
-      fetchData();
+      try {
+        setError('');
+        const res = await fetch(`/api/gaji/${id}`, { method: 'DELETE', headers: { 'Authorization': `Bearer ${token}` } });
+        if (!res.ok) throw new Error('Gagal menghapus data gaji');
+        fetchData();
+      } catch (err) {
+        console.error(err);
+        setError(err.message);
+      }
     }
   };
 
@@ -121,13 +165,14 @@ export default function Penggajian({ token }) {
 
   return (
     <div className="space-y-6">
+      {error && <div className="bg-red-100 text-red-800 p-3 rounded border border-red-300">{error}</div>}
       <div className="bg-white p-4 rounded shadow flex justify-between items-center">
          <div>
             <label className="text-xs text-gray-500 font-bold block mb-1">Filter Periode</label>
-            <select value={filterPeriodeId} onChange={e => {setFilterPeriodeId(e.target.value); setFormData({...formData, periode_id: e.target.value}); setIsEditing(false);}} className="border p-2 rounded">
+             <select value={filterPeriodeId} onChange={e => {setFilterPeriodeId(e.target.value); setFormData({...formData, periode_id: e.target.value}); setIsEditing(false);}} className="border p-2 rounded">
                 <option value="">Pilih Periode</option>
-                {periode.map(p => <option key={p.id} value={p.id}>{p.bulan} - {p.tahun_ajaran}</option>)}
-            </select>
+                {periode.map(p => <option key={p.id} value={String(p.id)}>{p.bulan} - {p.tahun_ajaran}</option>)}
+             </select>
          </div>
          {isLocked && <div className="bg-red-100 text-red-800 px-4 py-2 rounded font-bold">PERIODE DIKUNCI</div>}
       </div>
@@ -174,12 +219,12 @@ export default function Penggajian({ token }) {
             
             <form onSubmit={handleSubmit} className="space-y-4">
                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 bg-blue-50 p-3 rounded">
-                  <select name="guru_id" value={formData.guru_id} onChange={handleGuruChange} required className="border p-2 rounded">
-                      <option value="">Pilih Guru...</option>
-                      {guru.filter(g => g.status_aktif || g.id === formData.guru_id).map(g => (
-                          <option key={g.id} value={g.id}>{g.nama}</option>
-                      ))}
-                  </select>
+                   <select name="guru_id" value={formData.guru_id} onChange={handleGuruChange} required className="border p-2 rounded">
+                       <option value="">Pilih Guru...</option>
+                       {guru.filter(g => g.status_aktif || g.id === parseInt(formData.guru_id)).map(g => (
+                           <option key={g.id} value={String(g.id)}>{g.nama}</option>
+                       ))}
+                   </select>
                   <input type="number" name="jumlah_jam" placeholder="Total Jam" value={formData.jumlah_jam} onChange={handleChange} className="border p-2 rounded" />
                   <input type="number" name="jumlah_kelebihan_jam" placeholder="Lembur Jam" value={formData.jumlah_kelebihan_jam} onChange={handleChange} required className="border p-2 rounded" />
                   <input type="number" name="honor_per_jam" placeholder="Honor/Jam" value={formData.honor_per_jam} onChange={handleChange} required className="border p-2 rounded bg-gray-100" readOnly />

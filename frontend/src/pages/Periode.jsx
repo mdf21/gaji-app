@@ -8,33 +8,63 @@ export default function Periode({ token }) {
     fetchPeriode();
   }, [token]);
 
+  const [error, setError] = useState('');
+
   const fetchPeriode = async () => {
-    const res = await fetch('/api/periode', { headers: { 'Authorization': `Bearer ${token}` } });
-    setPeriode(await res.json());
+    try {
+      setError('');
+      const res = await fetch('/api/periode', { headers: { 'Authorization': `Bearer ${token}` } });
+      if (!res.ok) throw new Error('Gagal memuat data periode');
+      setPeriode(await res.json());
+    } catch (err) {
+      console.error(err);
+      setError(err.message);
+    }
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    await fetch('/api/periode', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-      body: JSON.stringify(formData)
-    });
-    setFormData({ bulan: '', tahun_ajaran: '', status: 'DRAFT' });
-    fetchPeriode();
+    try {
+      setError('');
+      const res = await fetch('/api/periode', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify(formData)
+      });
+      if (!res.ok) {
+        const errData = await res.json();
+        throw new Error(errData.message || 'Gagal membuat periode');
+      }
+      setFormData({ bulan: '', tahun_ajaran: '', status: 'DRAFT' });
+      fetchPeriode();
+    } catch (err) {
+      console.error(err);
+      setError(err.message);
+    }
   };
 
   const updateStatus = async (id, status) => {
-    await fetch(`/api/periode/${id}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-      body: JSON.stringify({ status })
-    });
-    fetchPeriode();
+    try {
+      setError('');
+      const res = await fetch(`/api/periode/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({ status })
+      });
+      if (!res.ok) {
+        const errData = await res.json();
+        throw new Error(errData.message || 'Gagal mengubah status periode');
+      }
+      fetchPeriode();
+    } catch (err) {
+      console.error(err);
+      setError(err.message);
+    }
   }
 
   return (
     <div className="space-y-4">
+      {error && <div className="bg-red-100 text-red-800 p-3 rounded border border-red-300">{error}</div>}
       <h2 className="text-xl font-bold text-gray-800">Periode Penggajian</h2>
       
       <form onSubmit={handleSubmit} className="bg-white p-4 rounded shadow flex gap-4 items-end">

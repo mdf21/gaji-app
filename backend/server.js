@@ -65,10 +65,10 @@ function calculateSalary(body) {
     const jumlahTerima = totalPendapatan - totalPotongan;
 
     return {
-        guru_id: body.guru_id,
+        guru_id: body.guru_id ? parseInt(body.guru_id) : null,
         nama: body.nama,
         bulan: body.bulan,
-        periode_id: body.periode_id,
+        periode_id: body.periode_id ? parseInt(body.periode_id) : null,
         jumlah_jam: parseInt(body.jumlah_jam) || 0,
         jumlah_kelebihan_jam: kelebihanJam,
         honor_per_jam: honorPerJam,

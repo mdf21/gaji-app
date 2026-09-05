@@ -15,13 +15,18 @@ export default function DataGuru({ token }) {
     fetchGuru();
   }, [token]);
 
+  const [error, setError] = useState('');
+
   const fetchGuru = async () => {
     try {
+      setError('');
       const res = await fetch('/api/guru', { headers: { 'Authorization': `Bearer ${token}` } });
+      if (!res.ok) throw new Error('Gagal memuat data guru');
       const data = await res.json();
       setGuru(data);
     } catch (err) {
       console.error(err);
+      setError(err.message);
     }
   };
 
@@ -32,19 +37,30 @@ export default function DataGuru({ token }) {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    const method = isEditing ? 'PUT' : 'POST';
-    const url = isEditing ? `/api/guru/${editId}` : '/api/guru';
-    
-    await fetch(url, {
-      method,
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-      body: JSON.stringify(formData)
-    });
-    
-    setShowForm(false);
-    setIsEditing(false);
-    setFormData({ nip: '', nama: '', jenis_kelamin: 'L', status_guru: 'Tetap', jabatan: 'Guru', mata_pelajaran: '', pendidikan: '', gaji_pokok: 0, tarif_honor: 0, no_rekening: '', status_aktif: true, keterangan: '' });
-    fetchGuru();
+    try {
+      setError('');
+      const method = isEditing ? 'PUT' : 'POST';
+      const url = isEditing ? `/api/guru/${editId}` : '/api/guru';
+      
+      const res = await fetch(url, {
+        method,
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify(formData)
+      });
+      
+      if (!res.ok) {
+        const errData = await res.json();
+        throw new Error(errData.message || 'Gagal menyimpan data guru');
+      }
+      
+      setShowForm(false);
+      setIsEditing(false);
+      setFormData({ nip: '', nama: '', jenis_kelamin: 'L', status_guru: 'Tetap', jabatan: 'Guru', mata_pelajaran: '', pendidikan: '', gaji_pokok: 0, tarif_honor: 0, no_rekening: '', status_aktif: true, keterangan: '' });
+      fetchGuru();
+    } catch (err) {
+      console.error(err);
+      setError(err.message);
+    }
   };
 
   const handleEdit = (g) => {
@@ -56,13 +72,21 @@ export default function DataGuru({ token }) {
 
   const handleDelete = async (id) => {
     if (confirm('Yakin ingin menghapus guru ini?')) {
-      await fetch(`/api/guru/${id}`, { method: 'DELETE', headers: { 'Authorization': `Bearer ${token}` } });
-      fetchGuru();
+      try {
+        setError('');
+        const res = await fetch(`/api/guru/${id}`, { method: 'DELETE', headers: { 'Authorization': `Bearer ${token}` } });
+        if (!res.ok) throw new Error('Gagal menghapus data guru');
+        fetchGuru();
+      } catch (err) {
+        console.error(err);
+        setError(err.message);
+      }
     }
   };
 
   return (
     <div className="space-y-4">
+      {error && <div className="bg-red-100 text-red-800 p-3 rounded border border-red-300">{error}</div>}
       <div className="flex justify-between items-center">
         <h2 className="text-xl font-bold text-gray-800">Master Data Guru</h2>
         <button onClick={() => { setShowForm(!showForm); setIsEditing(false); }} className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700">
@@ -78,11 +102,18 @@ export default function DataGuru({ token }) {
             <option value="L">Laki-laki</option>
             <option value="P">Perempuan</option>
           </select>
+          <select name="status_guru" value={formData.status_guru} onChange={handleChange} className="border p-2 rounded">
+            <option value="Tetap">Tetap</option>
+            <option value="Honorer">Honorer</option>
+            <option value="PNS">PNS</option>
+          </select>
           <input type="text" name="jabatan" placeholder="Jabatan" value={formData.jabatan} onChange={handleChange} className="border p-2 rounded" />
           <input type="text" name="mata_pelajaran" placeholder="Mata Pelajaran" value={formData.mata_pelajaran} onChange={handleChange} className="border p-2 rounded" />
+          <input type="text" name="pendidikan" placeholder="Pendidikan Terakhir" value={formData.pendidikan} onChange={handleChange} className="border p-2 rounded" />
           <input type="number" name="gaji_pokok" placeholder="Gaji Pokok" value={formData.gaji_pokok} onChange={handleChange} className="border p-2 rounded" />
           <input type="number" name="tarif_honor" placeholder="Tarif Honor/Jam" value={formData.tarif_honor} onChange={handleChange} className="border p-2 rounded" />
           <input type="text" name="no_rekening" placeholder="No Rekening" value={formData.no_rekening} onChange={handleChange} className="border p-2 rounded" />
+          <input type="text" name="keterangan" placeholder="Keterangan (Opsional)" value={formData.keterangan} onChange={handleChange} className="border p-2 rounded" />
           
           <label className="flex items-center space-x-2">
             <input type="checkbox" name="status_aktif" checked={formData.status_aktif} onChange={handleChange} />

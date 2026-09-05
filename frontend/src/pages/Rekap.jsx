@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 
 export default function Rekap({ token }) {
   const [dataGaji, setDataGaji] = useState([]);
+  const [error, setError] = useState('');
   const [filterTahun, setFilterTahun] = useState(new Date().getFullYear().toString());
   
   useEffect(() => {
@@ -10,8 +11,15 @@ export default function Rekap({ token }) {
 
   const fetchData = async () => {
     if (!token) return;
-    const res = await fetch('/api/gaji', { headers: { 'Authorization': `Bearer ${token}` } });
-    setDataGaji(await res.json());
+    try {
+      setError('');
+      const res = await fetch('/api/gaji', { headers: { 'Authorization': `Bearer ${token}` } });
+      if (!res.ok) throw new Error('Gagal memuat data gaji');
+      setDataGaji(await res.json());
+    } catch (err) {
+      console.error(err);
+      setError(err.message);
+    }
   };
 
   const formatRupiah = (angka) => new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(angka || 0);
@@ -20,7 +28,7 @@ export default function Rekap({ token }) {
   const filteredData = dataGaji.filter(g => g.bulan && g.bulan.startsWith(filterTahun));
 
   // Compute Grand Totals
-  const totalGuru = new Set(filteredData.map(g => g.guru_id)).size;
+  const totalGuru = new Set(filteredData.map(g => parseInt(g.guru_id)).filter(id => !isNaN(id))).size;
   const totalGajiPokok = filteredData.reduce((sum, g) => sum + (g.jumlah_gaji_pokok || 0), 0);
   const totalTunjKehadiran = filteredData.reduce((sum, g) => sum + (g.tunj_kehadiran || 0), 0);
   const totalJasaGanti = filteredData.reduce((sum, g) => sum + (g.jasa_ganti_guru || 0), 0);
@@ -54,6 +62,7 @@ export default function Rekap({ token }) {
 
   return (
     <div className="space-y-6">
+      {error && <div className="bg-red-100 text-red-800 p-3 rounded border border-red-300">{error}</div>}
       <div className="flex justify-between items-center bg-white p-4 rounded shadow">
         <h2 className="text-xl font-bold text-gray-800">Rekap Penggajian</h2>
         <div className="flex items-center gap-2">
