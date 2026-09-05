@@ -11,24 +11,26 @@ const app = express();
 const PORT = 3000;
 const DB_GAJI_PATH = path.join(__dirname, 'data', 'database.json');
 const DB_USERS_PATH = path.join(__dirname, 'data', 'users.json');
+const DB_GURU_PATH = path.join(__dirname, 'data', 'guru.json');
+const DB_PERIODE_PATH = path.join(__dirname, 'data', 'periode.json');
 const SECRET_KEY = 'rahasia_sekolah_mi_miftahul_huda'; // Dalam praktiknya, gunakan environment variable
 
 app.use(cors());
 app.use(express.json());
 
 // --- Helper Functions ---
-async function readDB(path) {
+async function readDB(dbPath) {
     try {
-        const data = await fs.readFile(path, 'utf8');
+        const data = await fs.readFile(dbPath, 'utf8');
         return JSON.parse(data);
     } catch (error) {
-        await fs.mkdir(path.dirname(path), { recursive: true });
-        await fs.writeFile(path, '[]');
+        await fs.mkdir(path.dirname(dbPath), { recursive: true });
+        await fs.writeFile(dbPath, '[]');
         return [];
     }
 }
-async function writeDB(path, data) {
-    await fs.writeFile(path, JSON.stringify(data, null, 2));
+async function writeDB(dbPath, data) {
+    await fs.writeFile(dbPath, JSON.stringify(data, null, 2));
 }
 
 // Perhitungan Gaji Otomatis
@@ -37,21 +39,36 @@ function calculateSalary(body) {
     const kelebihanJam = parseInt(body.jumlah_kelebihan_jam) || 0;
     const gajiPokok = honorPerJam * kelebihanJam;
     const tunjanganKehadiran = parseInt(body.tunj_kehadiran) || 0;
+    const jasaGantiGuru = parseInt(body.jasa_ganti_guru) || 0;
     
-    const fields = ['t_kamad', 't_bendahara', 't_kur', 't_kes', 't_sap', 't_pramuka', 't_uks', 't_10k', 't_kesenian', 't_keagamaan', 't_perpus', 't_operator', 't_dramband', 't_staff_tu', 't_wali_kls', 'jasa_ganti_guru'];
+    const fieldsTunjangan = ['t_kamad', 't_bendahara', 't_kur', 't_kes', 't_sap', 't_pramuka', 't_uks', 't_10k', 't_kesenian', 't_keagamaan', 't_perpus', 't_operator', 't_dramband', 't_staff_tu', 't_wali_kls'];
     let totalTunjangan = 0;
     let processedFields = {};
     
-    fields.forEach(f => {
+    fieldsTunjangan.forEach(f => {
         processedFields[f] = parseInt(body[f]) || 0;
         totalTunjangan += processedFields[f];
     });
 
-    const jumlahTerima = gajiPokok + tunjanganKehadiran + totalTunjangan;
+    const totalPendapatan = gajiPokok + tunjanganKehadiran + totalTunjangan + jasaGantiGuru;
+
+    // Potongan
+    const fieldsPotongan = ['p_koperasi', 'p_pinjaman', 'p_kas_sekolah', 'p_kehadiran', 'p_lainnya'];
+    let totalPotongan = 0;
+    let processedPotongan = {};
+
+    fieldsPotongan.forEach(f => {
+        processedPotongan[f] = parseInt(body[f]) || 0;
+        totalPotongan += processedPotongan[f];
+    });
+
+    const jumlahTerima = totalPendapatan - totalPotongan;
 
     return {
+        guru_id: body.guru_id,
         nama: body.nama,
-        bulan: body.bulan, // Menambahkan field BULAN (Format YYYY-MM)
+        bulan: body.bulan,
+        periode_id: body.periode_id,
         jumlah_jam: parseInt(body.jumlah_jam) || 0,
         jumlah_kelebihan_jam: kelebihanJam,
         honor_per_jam: honorPerJam,
@@ -59,8 +76,13 @@ function calculateSalary(body) {
         hadir: parseInt(body.hadir) || 0,
         tunj_kehadiran: tunjanganKehadiran,
         ...processedFields,
+        jasa_ganti_guru: jasaGantiGuru,
+        ...processedPotongan,
+        total_pendapatan: totalPendapatan,
+        total_potongan: totalPotongan,
         jumlah_terima: jumlahTerima,
-        keterangan: body.keterangan || ""
+        keterangan: body.keterangan || "",
+        ket_potongan: body.ket_potongan || ""
     };
 }
 
@@ -77,12 +99,11 @@ const authenticateToken = (req, res, next) => {
 };
 
 // --- ROUTES AUTHENTICATION ---
-// Inisialisasi User Default (Admin) jika belum ada
 async function initDefaultUser() {
     let users = await readDB(DB_USERS_PATH);
     if (users.length === 0) {
         const hashedPassword = await bcrypt.hash('admin123', 10);
-        users.push({ id: 1, username: 'admin', password: hashedPassword });
+        users.push({ id: 1, username: 'admin', password: hashedPassword, role: 'ADMIN' });
         await writeDB(DB_USERS_PATH, users);
     }
 }
@@ -97,18 +118,88 @@ app.post('/api/login', async (req, res) => {
     const validPassword = await bcrypt.compare(password, user.password);
     if (!validPassword) return res.status(400).json({ message: 'Password salah' });
 
-    const token = jwt.sign({ username: user.username }, SECRET_KEY, { expiresIn: '12h' });
-    res.json({ token, username: user.username });
+    const token = jwt.sign({ username: user.username, role: user.role }, SECRET_KEY, { expiresIn: '12h' });
+    res.json({ token, username: user.username, role: user.role });
+});
+
+// --- MASTER DATA GURU ---
+app.get('/api/guru', authenticateToken, async (req, res) => {
+    const data = await readDB(DB_GURU_PATH);
+    res.json(data);
+});
+
+app.post('/api/guru', authenticateToken, async (req, res) => {
+    const data = await readDB(DB_GURU_PATH);
+    const newId = data.length > 0 ? Math.max(...data.map(d => d.id)) + 1 : 1;
+    const newData = { id: newId, ...req.body, status_aktif: req.body.status_aktif !== undefined ? req.body.status_aktif : true };
+    data.push(newData);
+    await writeDB(DB_GURU_PATH, data);
+    res.status(201).json(newData);
+});
+
+app.put('/api/guru/:id', authenticateToken, async (req, res) => {
+    let data = await readDB(DB_GURU_PATH);
+    const index = data.findIndex(d => d.id === parseInt(req.params.id));
+    if (index === -1) return res.status(404).json({ message: 'Data tidak ditemukan' });
+    
+    data[index] = { ...data[index], ...req.body };
+    await writeDB(DB_GURU_PATH, data);
+    res.json(data[index]);
+});
+
+app.delete('/api/guru/:id', authenticateToken, async (req, res) => {
+    let data = await readDB(DB_GURU_PATH);
+    data = data.filter(d => d.id !== parseInt(req.params.id));
+    await writeDB(DB_GURU_PATH, data);
+    res.json({ message: "Data berhasil dihapus" });
+});
+
+// --- PERIODE PENGGAJIAN ---
+app.get('/api/periode', authenticateToken, async (req, res) => {
+    const data = await readDB(DB_PERIODE_PATH);
+    res.json(data);
+});
+
+app.post('/api/periode', authenticateToken, async (req, res) => {
+    const data = await readDB(DB_PERIODE_PATH);
+    const newId = data.length > 0 ? Math.max(...data.map(d => d.id)) + 1 : 1;
+    const newData = { id: newId, ...req.body, status: req.body.status || 'DRAFT' }; // DRAFT, DIPERIKSA, DIKUNCI
+    data.push(newData);
+    await writeDB(DB_PERIODE_PATH, data);
+    res.status(201).json(newData);
+});
+
+app.put('/api/periode/:id', authenticateToken, async (req, res) => {
+    let data = await readDB(DB_PERIODE_PATH);
+    const index = data.findIndex(d => d.id === parseInt(req.params.id));
+    if (index === -1) return res.status(404).json({ message: 'Data tidak ditemukan' });
+    
+    data[index] = { ...data[index], ...req.body };
+    await writeDB(DB_PERIODE_PATH, data);
+    res.json(data[index]);
+});
+
+app.delete('/api/periode/:id', authenticateToken, async (req, res) => {
+    let data = await readDB(DB_PERIODE_PATH);
+    data = data.filter(d => d.id !== parseInt(req.params.id));
+    await writeDB(DB_PERIODE_PATH, data);
+    res.json({ message: "Data berhasil dihapus" });
 });
 
 // --- ROUTES CRUD GAJI (Dilindungi Auth) ---
 app.get('/api/gaji', authenticateToken, async (req, res) => {
     const data = await readDB(DB_GAJI_PATH);
-    const bulan = req.query.bulan; // Filter bulan
+    const bulan = req.query.bulan;
+    const periode_id = req.query.periode_id;
+    
+    let filteredData = data;
     if (bulan) {
-        return res.json(data.filter(d => d.bulan === bulan));
+        filteredData = filteredData.filter(d => d.bulan === bulan);
     }
-    res.json(data);
+    if (periode_id) {
+        filteredData = filteredData.filter(d => d.periode_id === parseInt(periode_id));
+    }
+    res.json(filteredData);
 });
 
 app.post('/api/gaji', authenticateToken, async (req, res) => {
@@ -120,6 +211,17 @@ app.post('/api/gaji', authenticateToken, async (req, res) => {
     data.push(newData);
     await writeDB(DB_GAJI_PATH, data);
     res.status(201).json(newData);
+});
+
+app.put('/api/gaji/:id', authenticateToken, async (req, res) => {
+    let data = await readDB(DB_GAJI_PATH);
+    const index = data.findIndex(d => d.id === parseInt(req.params.id));
+    if (index === -1) return res.status(404).json({ message: 'Data tidak ditemukan' });
+    
+    const processedData = calculateSalary(req.body);
+    data[index] = { ...data[index], ...processedData };
+    await writeDB(DB_GAJI_PATH, data);
+    res.json(data[index]);
 });
 
 app.delete('/api/gaji/:id', authenticateToken, async (req, res) => {
